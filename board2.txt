@@ -1,0 +1,53 @@
+#define BLYNK_TEMPLATE_ID "TMPL3dL_ZMp_y" 
+#define BLYNK_TEMPLATE_NAME "Line Follower Robot" 
+#define BLYNK_AUTH_TOKEN "DevxRbQkq7g2gzqb3wfkLcbOBbpZVKwr" 
+#include <WiFi.h> 
+#include <WiFiClient.h> 
+#include <BlynkSimpleEsp32.h> 
+#include <HUSKYLENS.h> 
+#include <HardwareSerial.h> 
+// WiFi Credentials 
+char auth[] = BLYNK_AUTH_TOKEN; 
+char ssid[] = "IEDC MAKER STUDIO"; 
+char pass[] = "12345"; 
+HUSKYLENS huskylens; 
+const int SIGNAL_OUT = 2;  
+int targetID = 0; 
+// Setup Hardware Serial 1 
+HardwareSerial huskySerial(1); 
+BLYNK_WRITE(V1) { 
+  targetID = param.asInt();  
+} 
+ 
+void setup() { 
+  Serial.begin(115200); 
+   
+  // HuskyLens Pins: RX=12, TX=14 
+  huskySerial.begin(9600, SERIAL_8N1, 12, 14); 
+   
+  pinMode(SIGNAL_OUT, OUTPUT); 
+  digitalWrite(SIGNAL_OUT, LOW); 
+ 
+  Blynk.begin(auth, ssid, pass); 
+ 
+  while (!huskylens.begin(huskySerial)) { 
+    Serial.println("HuskyLens not detected!"); 
+    delay(500); 
+  } 
+  huskylens.writeAlgorithm(ALGORITHM_TAG_RECOGNITION); 
+} 
+ 
+void loop() { 
+  Blynk.run(); 
+   
+  if (targetID != 0 && huskylens.request() && huskylens.available()) { 
+    HUSKYLENSResult result = huskylens.read(); 
+    if (result.ID == targetID) { 
+digitalWrite(SIGNAL_OUT, HIGH);  
+delay(10000);                   
+digitalWrite(SIGNAL_OUT, LOW);   
+targetID = 0; 
+Blynk.virtualWrite(V1, 0);  
+} 
+} 
+}

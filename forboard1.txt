@@ -1,0 +1,96 @@
+#include <Arduino.h> 
+ 
+// --- Motor Pins --- 
+const int IN1 = 12, IN2 = 13, ENA = 25; 
+const int IN3 = 14, IN4 = 27, ENB = 26; 
+ 
+// --- Sensor Pins --- 
+const int IR_L = 34, IR_R = 35; 
+const int TRIG = 5,  ECHO = 18; 
+const int SIGNAL_IN = 4; // SIGNAL FROM NODEMCU D3 
+ 
+// --- Speed & Distance Settings --- 
+const int BASE_SPEED   = 130; 
+const int TURN_SPEED   = 150;   
+const int PIVOT_SPEED  = -90;   
+const int SEARCH_SPEED = 115;   
+const int OBSTACLE_DIST = 5;   
+ 
+void drive(int sL, int sR) { 
+  analogWrite(ENA, abs(sL)); analogWrite(ENB, abs(sR)); 
+  digitalWrite(IN1, sL >= 0); digitalWrite(IN2, sL < 0); 
+  digitalWrite(IN3, sR >= 0); digitalWrite(IN4, sR < 0); 
+} 
+ 
+long getDistance() { 
+  digitalWrite(TRIG, LOW); delayMicroseconds(2); 
+  digitalWrite(TRIG, HIGH); delayMicroseconds(10); 
+  digitalWrite(TRIG, LOW); 
+  long dur = pulseIn(ECHO, HIGH, 25000); 
+  return (dur == 0) ? 999 : (dur * 0.034 / 2); 
+} 
+ 
+// --- OBSTACLE AVOIDANCE: TURN LEFT TO FIND LINE --- 
+void findAlternatePath() { 
+  Serial.println(">>> Pathfinding: Turning LEFT slowly..."); 
+  drive(-SEARCH_SPEED, SEARCH_SPEED); // Start Left Pivot 
+  delay(800); // Move off current line 
+ 
+  unsigned long scanStart = millis(); 
+  while (millis() - scanStart < 10000) { 
+    drive(-SEARCH_SPEED, SEARCH_SPEED); 
+    
+    // STOP when LEFT IR hits Black (HIGH)
+  if (digitalRead(IR_L) == HIGH) { 
+      drive(0, 0); 
+      Serial.println(">>> Line Found. Resuming."); 
+      delay(200); 
+      return; 
+    } 
+    yield(); 
+  } 
+} 
+ 
+void setup() { 
+  Serial.begin(115200); 
+  pinMode(IN1, OUTPUT); pinMode(IN2, OUTPUT); pinMode(ENA, OUTPUT); 
+  pinMode(IN3, OUTPUT); pinMode(IN4, OUTPUT); pinMode(ENB, OUTPUT); 
+  pinMode(IR_L, INPUT); pinMode(IR_R, INPUT); 
+  pinMode(TRIG, OUTPUT); pinMode(ECHO, INPUT); 
+  pinMode(SIGNAL_IN, INPUT); 
+  drive(0, 0); 
+} 
+ 
+void loop() { 
+  // --- 1. BRAIN SIGNAL (HuskyLens Stop) --- 
+  if (digitalRead(SIGNAL_IN) == HIGH) { 
+    drive(0, 0); 
+    Serial.println("STOP: Brain board signal HIGH"); 
+    while(digitalRead(SIGNAL_IN) == HIGH) { yield(); } 
+    return; 
+  } 
+ 
+  // --- 2. OBSTACLE HANDLING --- 
+  if (getDistance() <= OBSTACLE_DIST) { 
+    drive(0, 0); 
+    Serial.println("Obstacle: Waiting 6s..."); 
+    delay(6000); 
+ 
+    if (getDistance() <= OBSTACLE_DIST) { 
+      findAlternatePath(); 
+    } 
+    return; 
+  } 
+ 
+  // --- 3. LINE FOLLOWING --- 
+  int L = digitalRead(IR_L); 
+  int R = digitalRead(IR_R); 
+ 
+  if (L == LOW && R == LOW) drive(BASE_SPEED, BASE_SPEED);      // Forward 
+  else if (L == HIGH && R == LOW) drive(PIVOT_SPEED, TURN_SPEED); // Correct 
+Left 
+  else if (L == LOW && R == HIGH) drive(TURN_SPEED, PIVOT_SPEED); // Correct 
+Right
+else drive(0, 0); // Both Black: Stop 
+delay(1); 
+}
